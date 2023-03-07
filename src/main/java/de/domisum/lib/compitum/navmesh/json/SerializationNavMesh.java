@@ -16,70 +16,71 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-public class SerializationNavMesh
-{
+public class SerializationNavMesh {
 
-	// PROPERTIES
-	@InitByDeserialization private String worldName;
-	@InitByDeserialization private Vector3D rangeCenter;
-	@InitByDeserialization private double range;
+    // PROPERTIES
+    @InitByDeserialization
+    private String worldName;
+    @InitByDeserialization
+    private Vector3D rangeCenter;
+    @InitByDeserialization
+    private double range;
 
-	// REFERENCES
-	@InitByDeserialization private List<NavMeshPoint> points = new ArrayList<>();
-	@InitByDeserialization private List<SerializationNavMeshTriangle> triangles = new ArrayList<>();
-	@InitByDeserialization private List<SerializationNavMeshLadder> ladders = new ArrayList<>();
+    // REFERENCES
+    @InitByDeserialization
+    private List<NavMeshPoint> points = new ArrayList<>();
+    @InitByDeserialization
+    private List<SerializationNavMeshTriangle> triangles = new ArrayList<>();
+    @InitByDeserialization
+    private List<SerializationNavMeshLadder> ladders = new ArrayList<>();
 
+    // INIT
+    @DeserializationNoArgsConstructor
+    public SerializationNavMesh() {
 
-	// INIT
-	@DeserializationNoArgsConstructor public SerializationNavMesh()
-	{
+    }
 
-	}
+    // CONVERSION
+    public SerializationNavMesh(NavMesh mesh) {
+        this.worldName = mesh.getWorld().getName();
+        this.rangeCenter = mesh.getRangeCenter();
+        this.range = mesh.getRange();
 
+        this.points.addAll(mesh.getPoints());
+        for (NavMeshTriangle triangle : mesh.getTriangles()) {
+            this.triangles.add(new SerializationNavMeshTriangle(triangle));
 
-	// CONVERSION
-	public SerializationNavMesh(NavMesh mesh)
-	{
-		this.worldName = mesh.getWorld().getName();
-		this.rangeCenter = mesh.getRangeCenter();
-		this.range = mesh.getRange();
+            for (NavMeshTriangleTransition transition : triangle.neighbors.values()) {
+                if (transition instanceof NavMeshLadder) {
+                    NavMeshLadder navMeshLadder = (NavMeshLadder) transition;
+                    // only add the ladder if the triangle currently being processed is the bottom one
+                    // in order to avoid duplicating the ladder
+                    if (navMeshLadder.getTriangleBottom() == triangle) {
+                        this.ladders.add(new SerializationNavMeshLadder(navMeshLadder));
+                    }
+                }
+            }
+        }
 
-		this.points.addAll(mesh.getPoints());
-		for(NavMeshTriangle triangle : mesh.getTriangles())
-		{
-			this.triangles.add(new SerializationNavMeshTriangle(triangle));
+        this.points.sort(Comparator.comparing(NavMeshPoint::getId));
+        this.triangles.sort(Comparator.comparing(SerializationNavMeshTriangle::getId));
+        this.ladders.sort(Comparator.comparing(SerializationNavMeshLadder::getTriangleBottom));
+    }
 
-			for(NavMeshTriangleTransition transition : triangle.neighbors.values())
-				if(transition instanceof NavMeshLadder)
-				{
-					NavMeshLadder navMeshLadder = (NavMeshLadder) transition;
-					// only add the ladder if the triangle currently being processed is the bottom one
-					// in order to avoid duplicating the ladder
-					if(navMeshLadder.getTriangleBottom() == triangle)
-						this.ladders.add(new SerializationNavMeshLadder(navMeshLadder));
-				}
-		}
+    public NavMesh convertToNavMesh(String id) {
+        Set<NavMeshTriangle> triangles = new HashSet<>();
+        for (SerializationNavMeshTriangle serializationTriangle : this.triangles) {
+            triangles.add(serializationTriangle.getNavMeshTriangle(this.points));
+        }
 
-		this.points.sort(Comparator.comparing(NavMeshPoint::getId));
-		this.triangles.sort(Comparator.comparing(SerializationNavMeshTriangle::getId));
-		this.ladders.sort(Comparator.comparing(SerializationNavMeshLadder::getTriangleBottom));
-	}
+        NavMesh navMesh = new NavMesh(id, this.rangeCenter, this.range, Bukkit.getWorld(this.worldName), this.points, triangles);
 
-	public NavMesh convertToNavMesh(String id)
-	{
-		Set<NavMeshTriangle> triangles = new HashSet<>();
-		for(SerializationNavMeshTriangle serializationTriangle : this.triangles)
-			triangles.add(serializationTriangle.getNavMeshTriangle(this.points));
+        for (SerializationNavMeshLadder serializationLadder : this.ladders) {
+            NavMeshLadder ladder = serializationLadder.getNavMeshLadder(navMesh);
+            ladder.getTriangleBottom().makeNeighbors(ladder.getTriangleTop(), ladder);
+        }
 
-		NavMesh navMesh = new NavMesh(id, this.rangeCenter, this.range, Bukkit.getWorld(this.worldName), this.points, triangles);
-
-		for(SerializationNavMeshLadder serializationLadder : this.ladders)
-		{
-			NavMeshLadder ladder = serializationLadder.getNavMeshLadder(navMesh);
-			ladder.getTriangleBottom().makeNeighbors(ladder.getTriangleTop(), ladder);
-		}
-
-		return navMesh;
-	}
+        return navMesh;
+    }
 
 }

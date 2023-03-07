@@ -9,44 +9,45 @@ import de.domisum.lib.compitum.navmesh.geometry.NavMeshTriangle;
 import de.domisum.lib.compitum.navmesh.transition.NavMeshLadder;
 import lombok.Getter;
 
-class SerializationNavMeshLadder
-{
+class SerializationNavMeshLadder {
 
-	// PROPERTIES
-	@InitByDeserialization @Getter private String triangleBottom;
-	@InitByDeserialization private Vector3D positionBottom;
+    // PROPERTIES
+    @InitByDeserialization
+    @Getter
+    private String triangleBottom;
+    @InitByDeserialization
+    private Vector3D positionBottom;
 
-	@InitByDeserialization private String triangleTop;
-	@InitByDeserialization private Vector3D positionTop;
+    @InitByDeserialization
+    private String triangleTop;
+    @InitByDeserialization
+    private Vector3D positionTop;
 
-	@InitByDeserialization private Direction2D ladderDirection;
+    @InitByDeserialization
+    private Direction2D ladderDirection;
 
+    // INIT
+    @DeserializationNoArgsConstructor
+    public SerializationNavMeshLadder() {
 
-	// INIT
-	@DeserializationNoArgsConstructor public SerializationNavMeshLadder()
-	{
+    }
 
-	}
+    protected SerializationNavMeshLadder(NavMeshLadder navMeshLadder) {
+        this.triangleBottom = navMeshLadder.getTriangleBottom().id;
+        this.positionBottom = navMeshLadder.getPositionBottom();
 
-	protected SerializationNavMeshLadder(NavMeshLadder navMeshLadder)
-	{
-		this.triangleBottom = navMeshLadder.getTriangleBottom().id;
-		this.positionBottom = navMeshLadder.getPositionBottom();
+        this.triangleTop = navMeshLadder.getTriangleTop().id;
+        this.positionTop = navMeshLadder.getPositionTop();
 
-		this.triangleTop = navMeshLadder.getTriangleTop().id;
-		this.positionTop = navMeshLadder.getPositionTop();
+        this.ladderDirection = navMeshLadder.getLadderDirection();
+    }
 
-		this.ladderDirection = navMeshLadder.getLadderDirection();
-	}
+    // GETTERS
+    protected NavMeshLadder getNavMeshLadder(NavMesh navMesh) {
+        NavMeshTriangle triangleBottom_ = navMesh.getTriangle(this.triangleBottom);
+        NavMeshTriangle triangleTop_ = navMesh.getTriangle(this.triangleTop);
 
-
-	// GETTERS
-	protected NavMeshLadder getNavMeshLadder(NavMesh navMesh)
-	{
-		NavMeshTriangle triangleBottom_ = navMesh.getTriangle(this.triangleBottom);
-		NavMeshTriangle triangleTop_ = navMesh.getTriangle(this.triangleTop);
-
-		return new NavMeshLadder(triangleBottom_, this.positionBottom, triangleTop_, this.positionTop, this.ladderDirection);
-	}
+        return new NavMeshLadder(triangleBottom_, this.positionBottom, triangleTop_, this.positionTop, this.ladderDirection);
+    }
 
 }

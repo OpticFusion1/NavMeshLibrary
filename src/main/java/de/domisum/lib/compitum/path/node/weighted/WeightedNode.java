@@ -1,13 +1,12 @@
 package de.domisum.lib.compitum.path.node.weighted;
 
-public interface WeightedNode
-{
+public interface WeightedNode {
 
-	// GETTERS
-	double getGValue();
+    // GETTERS
+    double getGValue();
 
-	double getHValue();
+    double getHValue();
 
-	double getFValue();
+    double getFValue();
 
 }

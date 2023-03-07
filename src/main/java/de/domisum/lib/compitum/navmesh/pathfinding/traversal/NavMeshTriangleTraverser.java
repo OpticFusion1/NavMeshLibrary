@@ -14,274 +14,243 @@ import de.domisum.lib.compitum.path.node.TransitionType;
 import java.util.ArrayList;
 import java.util.List;
 
-public class NavMeshTriangleTraverser
-{
+public class NavMeshTriangleTraverser {
 
-	// INPUT
-	private Vector3D startPosition;
-	private Vector3D targetPosition;
-	private List<NavMeshTriangle> triangleSequence;
+    // INPUT
+    private Vector3D startPosition;
+    private Vector3D targetPosition;
+    private List<NavMeshTriangle> triangleSequence;
 
-	// STATUS
-	private List<PathWaypoint> pathWaypoints = new ArrayList<>();
-	// triangle traversal
-	private Vector3D currentPosition;
-	private Vector3D visLeft;
-	private Vector3D visRight;
-	private int visLeftTriangleIndex;
-	private int visRightTriangleIndex;
+    // STATUS
+    private List<PathWaypoint> pathWaypoints = new ArrayList<>();
+    // triangle traversal
+    private Vector3D currentPosition;
+    private Vector3D visLeft;
+    private Vector3D visRight;
+    private int visLeftTriangleIndex;
+    private int visRightTriangleIndex;
 
-	private int currentTriangleIndex = 0;
-	private NavMeshTriangle triangle;
-	private NavMeshTriangle triangleAfter;
+    private int currentTriangleIndex = 0;
+    private NavMeshTriangle triangle;
+    private NavMeshTriangle triangleAfter;
 
-	private Vector3D portalEndpointLeft;
-	private Vector3D portalEndpointRight;
+    private Vector3D portalEndpointLeft;
+    private Vector3D portalEndpointRight;
 
-	private ProfilerStopWatch stopWatch = new ProfilerStopWatch("pathfinding.navMesh.triangleTraversal");
+    private ProfilerStopWatch stopWatch = new ProfilerStopWatch("pathfinding.navMesh.triangleTraversal");
 
-	// OUTPUT
-	private Path path;
+    // OUTPUT
+    private Path path;
 
+    // INIT
+    public NavMeshTriangleTraverser(Vector3D startPosition, Vector3D targetPosition, List<NavMeshTriangle> triangleSequence) {
+        this.startPosition = startPosition;
+        this.targetPosition = targetPosition;
 
-	// INIT
-	public NavMeshTriangleTraverser(Vector3D startPosition, Vector3D targetPosition, List<NavMeshTriangle> triangleSequence)
-	{
-		this.startPosition = startPosition;
-		this.targetPosition = targetPosition;
+        this.triangleSequence = triangleSequence;
+    }
 
-		this.triangleSequence = triangleSequence;
-	}
+    // GETTERS
+    public Path getPath() {
+        return this.path;
+    }
 
+    public ProfilerStopWatch getStopWatch() {
+        return this.stopWatch;
+    }
 
-	// GETTERS
-	public Path getPath()
-	{
-		return this.path;
-	}
+    private Vector3D getTowardsVisLeft() {
+        return this.visLeft.subtract(this.currentPosition);
+    }
 
-	public ProfilerStopWatch getStopWatch()
-	{
-		return this.stopWatch;
-	}
+    private Vector3D getTowardsVisRight() {
+        return this.visRight.subtract(this.currentPosition);
+    }
 
+    private Vector3D getTowardsPortalEndpointLeft() {
+        return this.portalEndpointLeft.subtract(this.currentPosition);
+    }
 
-	private Vector3D getTowardsVisLeft()
-	{
-		return this.visLeft.subtract(this.currentPosition);
-	}
+    private Vector3D getTowardsPortalEndpointRight() {
+        return this.portalEndpointRight.subtract(this.currentPosition);
+    }
 
-	private Vector3D getTowardsVisRight()
-	{
-		return this.visRight.subtract(this.currentPosition);
-	}
+    // TRAVERSAL
+    public void traverseTriangles() {
+        this.stopWatch.start();
 
-	private Vector3D getTowardsPortalEndpointLeft()
-	{
-		return this.portalEndpointLeft.subtract(this.currentPosition);
-	}
+        this.currentPosition = this.startPosition;
 
-	private Vector3D getTowardsPortalEndpointRight()
-	{
-		return this.portalEndpointRight.subtract(this.currentPosition);
-	}
+        if (this.triangleSequence.size() == 1) {
+            this.pathWaypoints.add(new PathWaypoint(this.targetPosition, TransitionType.WALK));
+        } else {
+            for (this.currentTriangleIndex = 0;
+                    this.currentTriangleIndex < this.triangleSequence.size(); this.currentTriangleIndex++) {
+                processTriangleTransition();
+            }
+        }
 
+        this.path = new Path(this.pathWaypoints);
+        this.stopWatch.stop();
+    }
 
-	// TRAVERSAL
-	public void traverseTriangles()
-	{
-		this.stopWatch.start();
+    private void processTriangleTransition() {
+        this.triangle = this.triangleSequence.get(this.currentTriangleIndex);
+        this.triangleAfter = this.currentTriangleIndex + 1 < this.triangleSequence.size()
+                ? this.triangleSequence.get(this.currentTriangleIndex + 1)
+                : null;
 
-		this.currentPosition = this.startPosition;
+        NavMeshTriangleTransition transition = this.triangle.getTransitionTo(this.triangleAfter);
 
-		if(this.triangleSequence.size() == 1)
-			this.pathWaypoints.add(new PathWaypoint(this.targetPosition, TransitionType.WALK));
-		else
-		{
-			for(this.currentTriangleIndex = 0;
-			    this.currentTriangleIndex < this.triangleSequence.size(); this.currentTriangleIndex++)
-				processTriangleTransition();
-		}
+        if (this.triangleAfter == null) {
+            traverseTrianglePortal();
+        } else if (transition.getTransitionType() == TransitionType.WALK) {
+            traverseTrianglePortal();
+        } else if (transition.getTransitionType() == TransitionType.CLIMB) {
+            useLadder();
+        }
+    }
 
-		this.path = new Path(this.pathWaypoints);
-		this.stopWatch.stop();
-	}
+    // WALKING
+    private void traverseTrianglePortal() {
+        if (this.triangleAfter == null) // last triangle
+        {
+            processMovementTowardsTargetPoint(this.targetPosition);
+        } // either first triangle processing or after new corner
+        else if (this.visLeft == null) // if visLeft is null, then visRight is also null
+        {
+            findPortalEndpoints(this.triangle, this.triangleAfter);
+            this.visLeft = this.portalEndpointLeft;
+            this.visRight = this.portalEndpointRight;
+            this.visLeftTriangleIndex = this.currentTriangleIndex;
+            this.visRightTriangleIndex = this.currentTriangleIndex;
+        } else {
+            findPortalEndpoints(this.triangle, this.triangleAfter);
 
+            boolean leftSame = isSame(this.visLeft, this.currentPosition);
+            boolean rightSame = isSame(this.visRight, this.currentPosition);
 
-	private void processTriangleTransition()
-	{
-		this.triangle = this.triangleSequence.get(this.currentTriangleIndex);
-		this.triangleAfter = this.currentTriangleIndex+1 < this.triangleSequence.size() ?
-				this.triangleSequence.get(this.currentTriangleIndex+1) :
-				null;
+            // check if portal is out on one side
+            if (isLeftOf(getTowardsVisRight(), getTowardsPortalEndpointLeft(), true) && !leftSame && !rightSame) // right turn
+            {
+                newWaypoint(this.visRight, TransitionType.WALK);
 
-		NavMeshTriangleTransition transition = this.triangle.getTransitionTo(this.triangleAfter);
+                this.currentTriangleIndex = this.visRightTriangleIndex;
+                return;
+            } else if (isLeftOf(getTowardsPortalEndpointRight(), getTowardsVisLeft(), true) && !leftSame && !rightSame) // left turn
+            {
+                newWaypoint(this.visLeft, TransitionType.WALK);
 
-		if(this.triangleAfter == null)
-			traverseTrianglePortal();
-		else if(transition.getTransitionType() == TransitionType.WALK)
-			traverseTrianglePortal();
-		else if(transition.getTransitionType() == TransitionType.CLIMB)
-			useLadder();
-	}
+                this.currentTriangleIndex = this.visLeftTriangleIndex;
+                return;
+            }
 
+            // confine movement cone
+            if (isLeftOf(getTowardsVisLeft(), getTowardsPortalEndpointLeft(), true)) // left
+            {
+                this.visLeft = this.portalEndpointLeft;
+                this.visLeftTriangleIndex = this.currentTriangleIndex;
+            }
+            if (isLeftOf(getTowardsPortalEndpointRight(), getTowardsVisRight(), true)) // right
+            {
+                this.visRight = this.portalEndpointRight;
+                this.visRightTriangleIndex = this.currentTriangleIndex;
+            }
+        }
+    }
 
-	// WALKING
-	private void traverseTrianglePortal()
-	{
-		if(this.triangleAfter == null) // last triangle
-			processMovementTowardsTargetPoint(this.targetPosition);
-			// either first triangle processing or after new corner
-		else if(this.visLeft == null) // if visLeft is null, then visRight is also null
-		{
-			findPortalEndpoints(this.triangle, this.triangleAfter);
-			this.visLeft = this.portalEndpointLeft;
-			this.visRight = this.portalEndpointRight;
-			this.visLeftTriangleIndex = this.currentTriangleIndex;
-			this.visRightTriangleIndex = this.currentTriangleIndex;
-		}
-		else
-		{
-			findPortalEndpoints(this.triangle, this.triangleAfter);
+    private void processMovementTowardsTargetPoint(Vector3D targetPoint) {
+        // the vis points can be null if the transition into the previous triangle was a turn
+        // if this is the case, the target point is guaranteed to be in the cone
+        if (this.visLeft != null) {
+            Vector3D towardsTargetPoint = targetPoint.subtract(this.currentPosition);
 
-			boolean leftSame = isSame(this.visLeft, this.currentPosition);
-			boolean rightSame = isSame(this.visRight, this.currentPosition);
+            if (isLeftOf(getTowardsVisRight(), towardsTargetPoint, false)) // right turn
+            {
+                newWaypoint(this.visRight, TransitionType.WALK);
 
-			// check if portal is out on one side
-			if(isLeftOf(getTowardsVisRight(), getTowardsPortalEndpointLeft(), true) && !leftSame && !rightSame) // right turn
-			{
-				newWaypoint(this.visRight, TransitionType.WALK);
+                this.currentTriangleIndex = this.visRightTriangleIndex;
+                return;
+            } else if (isLeftOf(towardsTargetPoint, getTowardsVisLeft(), false)) // left turn
+            {
+                newWaypoint(this.visLeft, TransitionType.WALK);
 
-				this.currentTriangleIndex = this.visRightTriangleIndex;
-				return;
-			}
-			else if(isLeftOf(getTowardsPortalEndpointRight(), getTowardsVisLeft(), true) && !leftSame && !rightSame) // left turn
-			{
-				newWaypoint(this.visLeft, TransitionType.WALK);
+                this.currentTriangleIndex = this.visLeftTriangleIndex;
+                return;
+            }
+        }
 
-				this.currentTriangleIndex = this.visLeftTriangleIndex;
-				return;
-			}
+        this.pathWaypoints.add(new PathWaypoint(targetPoint, TransitionType.WALK));
+    }
 
-			// confine movement cone
-			if(isLeftOf(getTowardsVisLeft(), getTowardsPortalEndpointLeft(), true)) // left
-			{
-				this.visLeft = this.portalEndpointLeft;
-				this.visLeftTriangleIndex = this.currentTriangleIndex;
-			}
-			if(isLeftOf(getTowardsPortalEndpointRight(), getTowardsVisRight(), true)) // right
-			{
-				this.visRight = this.portalEndpointRight;
-				this.visRightTriangleIndex = this.currentTriangleIndex;
-			}
-		}
-	}
+    // LADDER CLIMBING
+    private void useLadder() {
+        NavMeshTriangleTransition transition = this.triangle.getTransitionTo(this.triangleAfter);
+        NavMeshLadder ladder = (NavMeshLadder) transition;
 
-	private void processMovementTowardsTargetPoint(Vector3D targetPoint)
-	{
-		// the vis points can be null if the transition into the previous triangle was a turn
-		// if this is the case, the target point is guaranteed to be in the cone
-		if(this.visLeft != null)
-		{
-			Vector3D towardsTargetPoint = targetPoint.subtract(this.currentPosition);
+        boolean upwards = ladder.getTriangleBottom() == this.triangle;
+        if (upwards) {
+            processMovementTowardsTargetPoint(ladder.getPositionBottom());
+            Vector3D climbingEndPosition = new Vector3D(ladder.getPositionBottom().x, ladder.getPositionTop().y,
+                    ladder.getPositionBottom().z);
 
-			if(isLeftOf(getTowardsVisRight(), towardsTargetPoint, false)) // right turn
-			{
-				newWaypoint(this.visRight, TransitionType.WALK);
+            PathWaypoint climbPathWaypoint = newWaypoint(climbingEndPosition, TransitionType.CLIMB);
+            climbPathWaypoint.setData("ladderDirection", ladder.getLadderDirection());
+            newWaypoint(ladder.getPositionTop(), TransitionType.WALK);
+        } else {
+            Vector3D climbingStartPosition = new Vector3D(ladder.getPositionBottom().x, ladder.getPositionTop().y,
+                    ladder.getPositionBottom().z);
 
-				this.currentTriangleIndex = this.visRightTriangleIndex;
-				return;
-			}
-			else if(isLeftOf(towardsTargetPoint, getTowardsVisLeft(), false)) // left turn
-			{
-				newWaypoint(this.visLeft, TransitionType.WALK);
+            processMovementTowardsTargetPoint(climbingStartPosition);
+            PathWaypoint climbPathWaypoint = newWaypoint(ladder.getPositionBottom(), TransitionType.CLIMB);
+            climbPathWaypoint.setData("ladderDirection", ladder.getLadderDirection());
+        }
+    }
 
-				this.currentTriangleIndex = this.visLeftTriangleIndex;
-				return;
-			}
-		}
+    // SUBROUTINES
+    private void findPortalEndpoints(NavMeshTriangle from, NavMeshTriangle to) {
+        NavMeshTriangleTransition transition = from.getTransitionTo(to);
+        LineSegment3D portalLineSegment = ((NavMeshTrianglePortal) transition).getFullLineSegment();
 
-		this.pathWaypoints.add(new PathWaypoint(targetPoint, TransitionType.WALK));
-	}
+        this.portalEndpointLeft = portalLineSegment.a;
+        this.portalEndpointRight = portalLineSegment.b;
 
+        Vector3D fromCenter = from.getCenter();
+        if (isLeftOf(this.portalEndpointRight.subtract(fromCenter), this.portalEndpointLeft.subtract(fromCenter), false)) {
+            Vector3D temp = this.portalEndpointLeft;
+            this.portalEndpointLeft = this.portalEndpointRight;
+            this.portalEndpointRight = temp;
+        }
+    }
 
-	// LADDER CLIMBING
-	private void useLadder()
-	{
-		NavMeshTriangleTransition transition = this.triangle.getTransitionTo(this.triangleAfter);
-		NavMeshLadder ladder = (NavMeshLadder) transition;
+    private PathWaypoint newWaypoint(Vector3D position, int transitionType) {
+        PathWaypoint pathWaypoint = new PathWaypoint(position, transitionType);
+        this.pathWaypoints.add(pathWaypoint);
 
-		boolean upwards = ladder.getTriangleBottom() == this.triangle;
-		if(upwards)
-		{
-			processMovementTowardsTargetPoint(ladder.getPositionBottom());
-			Vector3D climbingEndPosition = new Vector3D(ladder.getPositionBottom().x, ladder.getPositionTop().y,
-					ladder.getPositionBottom().z);
+        this.currentPosition = position;
+        this.visLeft = null;
+        this.visRight = null;
 
-			PathWaypoint climbPathWaypoint = newWaypoint(climbingEndPosition, TransitionType.CLIMB);
-			climbPathWaypoint.setData("ladderDirection", ladder.getLadderDirection());
-			newWaypoint(ladder.getPositionTop(), TransitionType.WALK);
-		}
-		else
-		{
-			Vector3D climbingStartPosition = new Vector3D(ladder.getPositionBottom().x, ladder.getPositionTop().y,
-					ladder.getPositionBottom().z);
+        return pathWaypoint;
+    }
 
-			processMovementTowardsTargetPoint(climbingStartPosition);
-			PathWaypoint climbPathWaypoint = newWaypoint(ladder.getPositionBottom(), TransitionType.CLIMB);
-			climbPathWaypoint.setData("ladderDirection", ladder.getLadderDirection());
-		}
-	}
+    // UTIL
+    private static boolean isLeftOf(Vector3D v1, Vector3D v2, boolean onZero) {
+        double crossY = v1.crossProduct(v2).y;
 
+        if (crossY == 0) {
+            return onZero;
+        }
 
-	// SUBROUTINES
-	private void findPortalEndpoints(NavMeshTriangle from, NavMeshTriangle to)
-	{
-		NavMeshTriangleTransition transition = from.getTransitionTo(to);
-		LineSegment3D portalLineSegment = ((NavMeshTrianglePortal) transition).getFullLineSegment();
+        return crossY < 0;
+    }
 
-		this.portalEndpointLeft = portalLineSegment.a;
-		this.portalEndpointRight = portalLineSegment.b;
+    private static boolean isSame(Vector3D a, Vector3D b) {
+        if (a == null) {
+            return b == null;
+        }
 
-		Vector3D fromCenter = from.getCenter();
-		if(isLeftOf(this.portalEndpointRight.subtract(fromCenter), this.portalEndpointLeft.subtract(fromCenter), false))
-		{
-			Vector3D temp = this.portalEndpointLeft;
-			this.portalEndpointLeft = this.portalEndpointRight;
-			this.portalEndpointRight = temp;
-		}
-	}
-
-	private PathWaypoint newWaypoint(Vector3D position, int transitionType)
-	{
-		PathWaypoint pathWaypoint = new PathWaypoint(position, transitionType);
-		this.pathWaypoints.add(pathWaypoint);
-
-		this.currentPosition = position;
-		this.visLeft = null;
-		this.visRight = null;
-
-		return pathWaypoint;
-	}
-
-
-	// UTIL
-	private static boolean isLeftOf(Vector3D v1, Vector3D v2, boolean onZero)
-	{
-		double crossY = v1.crossProduct(v2).y;
-
-		if(crossY == 0)
-			return onZero;
-
-		return crossY < 0;
-	}
-
-	private static boolean isSame(Vector3D a, Vector3D b)
-	{
-		if(a == null)
-			return b == null;
-
-		return a.equals(b);
-	}
+        return a.equals(b);
+    }
 
 }

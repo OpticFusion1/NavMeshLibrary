@@ -14,154 +14,138 @@ import java.util.Map;
 import java.util.Set;
 
 @API
-public class NavMeshTrianglePathfinder
-{
+public class NavMeshTrianglePathfinder {
 
-	// PROPERTIES
-	private int maxNodeVisits = 200;
+    // PROPERTIES
+    private int maxNodeVisits = 200;
 
-	private boolean canUseLadders = true;
+    private boolean canUseLadders = true;
 
-	// INPUT
-	private NavMeshTriangle startTriangle;
-	private NavMeshTriangle targetTriangle;
+    // INPUT
+    private NavMeshTriangle startTriangle;
+    private NavMeshTriangle targetTriangle;
 
-	// STATUS
-	private Set<NavMeshTriangleNode> visitedNodes = new HashSet<>(this.maxNodeVisits);
-	private SortedWeightedNodeList<NavMeshTriangleNode> unvisitedNodes = new SortedWeightedNodeList<>(this.maxNodeVisits*3);
+    // STATUS
+    private Set<NavMeshTriangleNode> visitedNodes = new HashSet<>(this.maxNodeVisits);
+    private SortedWeightedNodeList<NavMeshTriangleNode> unvisitedNodes = new SortedWeightedNodeList<>(this.maxNodeVisits * 3);
 
-	private ProfilerStopWatch stopWatch = new ProfilerStopWatch("pathfinding.navMesh.triangleSequence");
+    private ProfilerStopWatch stopWatch = new ProfilerStopWatch("pathfinding.navMesh.triangleSequence");
 
-	// OUTPUT
-	private List<NavMeshTriangle> triangleSequence = null;
-	private String failure;
+    // OUTPUT
+    private List<NavMeshTriangle> triangleSequence = null;
+    private String failure;
 
+    // INIT
+    @API
+    public NavMeshTrianglePathfinder(NavMeshTriangle startTriangle, NavMeshTriangle targetTriangle) {
+        this.startTriangle = startTriangle;
+        this.targetTriangle = targetTriangle;
+    }
 
-	// INIT
-	@API public NavMeshTrianglePathfinder(NavMeshTriangle startTriangle, NavMeshTriangle targetTriangle)
-	{
-		this.startTriangle = startTriangle;
-		this.targetTriangle = targetTriangle;
-	}
+    // GETTERS
+    public List<NavMeshTriangle> getTriangleSequence() {
+        return this.triangleSequence;
+    }
 
+    public String getFailure() {
+        return this.failure;
+    }
 
-	// GETTERS
-	public List<NavMeshTriangle> getTriangleSequence()
-	{
-		return this.triangleSequence;
-	}
+    @API
+    public ProfilerStopWatch getStopWatch() {
+        return this.stopWatch;
+    }
 
-	public String getFailure()
-	{
-		return this.failure;
-	}
+    @API
+    public boolean canUseLadders() {
+        return this.canUseLadders;
+    }
 
-	@API public ProfilerStopWatch getStopWatch()
-	{
-		return this.stopWatch;
-	}
+    // SETTERS
+    @API
+    public void setCanUseLadders(boolean canUseLadders) {
+        this.canUseLadders = canUseLadders;
+    }
 
+    // PATHFINDING
+    @API
+    public void findPath() {
+        this.stopWatch.start();
 
-	@API public boolean canUseLadders()
-	{
-		return this.canUseLadders;
-	}
+        NavMeshTriangleNode targetNode = null;
 
+        // pathfinding
+        this.unvisitedNodes
+                .addSorted(new NavMeshTriangleNode(this.startTriangle, null, calculateHeuristicValue(this.startTriangle)));
+        while (true) {
+            if (this.visitedNodes.size() >= this.maxNodeVisits) {
+                this.failure = "Too many nodes visited";
+                break;
+            }
 
-	// SETTERS
-	@API public void setCanUseLadders(boolean canUseLadders)
-	{
-		this.canUseLadders = canUseLadders;
-	}
+            if (this.unvisitedNodes.getSize() == 0) {
+                this.failure = "No unvisted nodes left";
+                break;
+            }
 
+            NavMeshTriangleNode node = this.unvisitedNodes.getAndRemoveFirst();
+            if (this.targetTriangle.equals(node.getTriangle())) {
+                targetNode = node;
+                break;
+            }
 
-	// PATHFINDING
-	@API public void findPath()
-	{
-		this.stopWatch.start();
+            visitNode(node);
+            this.visitedNodes.add(node);
+        }
 
-		NavMeshTriangleNode targetNode = null;
+        // converting linked node list into triangle list
+        if (targetNode != null) {
+            this.triangleSequence = new ArrayList<>();
 
-		// pathfinding
-		this.unvisitedNodes
-				.addSorted(new NavMeshTriangleNode(this.startTriangle, null, calculateHeuristicValue(this.startTriangle)));
-		while(true)
-		{
-			if(this.visitedNodes.size() >= this.maxNodeVisits)
-			{
-				this.failure = "Too many nodes visited";
-				break;
-			}
+            NavMeshTriangleNode currentNode = targetNode;
+            while (currentNode != null) {
+                this.triangleSequence.add(currentNode.getTriangle());
+                currentNode = currentNode.getParent();
+            }
 
-			if(this.unvisitedNodes.getSize() == 0)
-			{
-				this.failure = "No unvisted nodes left";
-				break;
-			}
+            Collections.reverse(this.triangleSequence);
+        }
 
-			NavMeshTriangleNode node = this.unvisitedNodes.getAndRemoveFirst();
-			if(this.targetTriangle.equals(node.getTriangle()))
-			{
-				targetNode = node;
-				break;
-			}
+        this.stopWatch.stop();
+    }
 
-			visitNode(node);
-			this.visitedNodes.add(node);
-		}
+    private void visitNode(NavMeshTriangleNode node) {
+        NavMeshTriangle triangle = node.getTriangle();
+        for (Map.Entry<NavMeshTriangle, NavMeshTriangleTransition> entry : triangle.neighbors.entrySet()) {
+            NavMeshTriangleNode newNode = new NavMeshTriangleNode(entry.getKey(), node, calculateHeuristicValue(triangle));
+            if (this.visitedNodes.contains(newNode)) {
+                continue;
+            }
 
-		// converting linked node list into triangle list
-		if(targetNode != null)
-		{
-			this.triangleSequence = new ArrayList<>();
+            if (this.unvisitedNodes.contains(newNode)) {
+                continue;
+            }
 
-			NavMeshTriangleNode currentNode = targetNode;
-			while(currentNode != null)
-			{
-				this.triangleSequence.add(currentNode.getTriangle());
-				currentNode = currentNode.getParent();
-			}
+            this.unvisitedNodes.addSorted(newNode);
+        }
+    }
 
-			Collections.reverse(this.triangleSequence);
-		}
+    private double calculateHeuristicValue(NavMeshTriangle triangle) {
+        double dX = this.targetTriangle.getHeuristicCenter().x - triangle.getHeuristicCenter().x;
+        double dY = this.targetTriangle.getHeuristicCenter().y - triangle.getHeuristicCenter().y;
+        double dZ = this.targetTriangle.getHeuristicCenter().z - triangle.getHeuristicCenter().z;
 
-		this.stopWatch.stop();
-	}
+        double dXAbs = Math.abs(dX);
+        double dYAbs = Math.abs(dY);
+        double dZAbs = Math.abs(dZ);
 
-	private void visitNode(NavMeshTriangleNode node)
-	{
-		NavMeshTriangle triangle = node.getTriangle();
-		for(Map.Entry<NavMeshTriangle, NavMeshTriangleTransition> entry : triangle.neighbors.entrySet())
-		{
-			NavMeshTriangleNode newNode = new NavMeshTriangleNode(entry.getKey(), node, calculateHeuristicValue(triangle));
-			if(this.visitedNodes.contains(newNode))
-				continue;
+        // diagonal distance of x and z
+        double minD = Math.min(dXAbs, dZAbs);
+        double maxD = Math.max(dXAbs, dZAbs);
+        double diagonalDistance = (maxD - minD) + minD * 1.414;
 
-			if(this.unvisitedNodes.contains(newNode))
-				continue;
-
-			this.unvisitedNodes.addSorted(newNode);
-		}
-	}
-
-
-	private double calculateHeuristicValue(NavMeshTriangle triangle)
-	{
-		double dX = this.targetTriangle.getHeuristicCenter().x-triangle.getHeuristicCenter().x;
-		double dY = this.targetTriangle.getHeuristicCenter().y-triangle.getHeuristicCenter().y;
-		double dZ = this.targetTriangle.getHeuristicCenter().z-triangle.getHeuristicCenter().z;
-
-		double dXAbs = Math.abs(dX);
-		double dYAbs = Math.abs(dY);
-		double dZAbs = Math.abs(dZ);
-
-		// diagonal distance of x and z
-		double minD = Math.min(dXAbs, dZAbs);
-		double maxD = Math.max(dXAbs, dZAbs);
-		double diagonalDistance = (maxD-minD)+minD*1.414;
-
-		// add dY to account for height difference
-		return diagonalDistance+dYAbs;
-	}
+        // add dY to account for height difference
+        return diagonalDistance + dYAbs;
+    }
 
 }

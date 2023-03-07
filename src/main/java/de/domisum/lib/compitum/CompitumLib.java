@@ -11,106 +11,102 @@ import org.bukkit.plugin.java.JavaPlugin;
 import java.util.logging.Logger;
 
 @API
-public class CompitumLib
-{
+public class CompitumLib {
 
-	// SETTINGS
-	private static boolean navMeshesEnabled = false;
+    // SETTINGS
+    private static boolean navMeshesEnabled = false;
 
-	// REFERENCES
-	private static CompitumLib instance;
-	private Plugin plugin;
+    // REFERENCES
+    private static CompitumLib instance;
+    private Plugin plugin;
 
-	private NavMeshManager navMeshManager;
+    private NavMeshManager navMeshManager;
 
+    // INIT
+    private CompitumLib(JavaPlugin plugin) {
+        this.plugin = plugin;
+    }
 
-	// INIT
-	private CompitumLib(JavaPlugin plugin)
-	{
-		this.plugin = plugin;
-	}
+    @API
+    public static void enable(JavaPlugin plugin) {
+        if (instance != null) {
+            return;
+        }
 
-	@API public static void enable(JavaPlugin plugin)
-	{
-		if(instance != null)
-			return;
+        instance = new CompitumLib(plugin);
+        instance.onEnable();
+    }
 
-		instance = new CompitumLib(plugin);
-		instance.onEnable();
-	}
+    @API
+    public static void disable() {
+        if (instance == null) {
+            return;
+        }
 
-	@API public static void disable()
-	{
-		if(instance == null)
-			return;
+        getInstance().onDisable();
+        instance = null;
+    }
 
-		getInstance().onDisable();
-		instance = null;
-	}
+    private void onEnable() {
+        AuxiliumSpigotLib.enable(this.plugin);
 
-	private void onEnable()
-	{
-		AuxiliumSpigotLib.enable(this.plugin);
+        MaterialEvaluator.prepareEvaluation();
+        StairEvaluator.prepareEvaluation();
 
-		MaterialEvaluator.prepareEvaluation();
-		StairEvaluator.prepareEvaluation();
+        if (navMeshesEnabled) {
+            this.navMeshManager = new NavMeshManager();
+            this.navMeshManager.initiialize();
+        }
 
-		if(navMeshesEnabled)
-		{
-			this.navMeshManager = new NavMeshManager();
-			this.navMeshManager.initiialize();
-		}
+        getLogger().info(this.getClass().getSimpleName() + " has been enabled");
+    }
 
-		getLogger().info(this.getClass().getSimpleName()+" has been enabled");
-	}
+    private void onDisable() {
+        if (this.navMeshManager != null) {
+            this.navMeshManager.terminate();
+        }
 
-	private void onDisable()
-	{
-		if(this.navMeshManager != null)
-			this.navMeshManager.terminate();
+        AuxiliumSpigotLib.disable();
 
-		AuxiliumSpigotLib.disable();
+        getLogger().info(this.getClass().getSimpleName() + " has been disabled");
+    }
 
-		getLogger().info(this.getClass().getSimpleName()+" has been disabled");
-	}
+    // GETTERS
+    @API
+    public static CompitumLib getInstance() {
+        if (instance == null) {
+            throw new IllegalArgumentException(CompitumLib.class.getSimpleName() + " has to be initialized before usage");
+        }
 
+        return instance;
+    }
 
-	// GETTERS
-	@API public static CompitumLib getInstance()
-	{
-		if(instance == null)
-			throw new IllegalArgumentException(CompitumLib.class.getSimpleName()+" has to be initialized before usage");
+    public static Logger getLogger() {
+        return getInstance().plugin.getLogger();
+    }
 
-		return instance;
-	}
+    @API
+    public static NavMeshManager getNavMeshManager() {
+        if (!navMeshesEnabled) {
+            throw new IllegalStateException("The usage of NavMeshes has to be enabled first!");
+        }
 
-	public static Logger getLogger()
-	{
-		return getInstance().plugin.getLogger();
-	}
+        return getInstance().navMeshManager;
+    }
 
+    @API
+    public static boolean areNavMeshesEnabled() {
+        return navMeshesEnabled;
+    }
 
-	@API public static NavMeshManager getNavMeshManager()
-	{
-		if(!navMeshesEnabled)
-			throw new IllegalStateException("The usage of NavMeshes has to be enabled first!");
+    // SETTERS
+    @API
+    public static void enableNavMeshes() {
+        if (instance != null) {
+            throw new IllegalStateException("NavMeshes have to be enabled before enabling CompitumLib");
+        }
 
-		return getInstance().navMeshManager;
-	}
-
-	@API public static boolean areNavMeshesEnabled()
-	{
-		return navMeshesEnabled;
-	}
-
-
-	// SETTERS
-	@API public static void enableNavMeshes()
-	{
-		if(instance != null)
-			throw new IllegalStateException("NavMeshes have to be enabled before enabling CompitumLib");
-
-		navMeshesEnabled = true;
-	}
+        navMeshesEnabled = true;
+    }
 
 }

@@ -19,253 +19,240 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
-public class NavMesh
-{
+public class NavMesh {
 
-	// CONSTANTS
-	private static final int KEY_LENGTH = 5;
+    // CONSTANTS
+    private static final int KEY_LENGTH = 5;
 
-	// PROPERTIES
-	private String id;
-	private Vector3D rangeCenter;
-	private double range;
+    // PROPERTIES
+    private String id;
+    private Vector3D rangeCenter;
+    private double range;
 
-	// REFERENCES
-	private World world;
-	private Map<String, NavMeshPoint> points = new HashMap<>(); // <id, point>
-	private Map<String, NavMeshTriangle> triangles = new HashMap<>(); // <id, triangle>
+    // REFERENCES
+    private World world;
+    private Map<String, NavMeshPoint> points = new HashMap<>(); // <id, point>
+    private Map<String, NavMeshTriangle> triangles = new HashMap<>(); // <id, triangle>
 
+    // INIT
+    public NavMesh(String id, Vector3D ranceCenter, double range, World world, Collection<NavMeshPoint> points,
+            Collection<NavMeshTriangle> triangles) {
+        this.id = id;
+        this.rangeCenter = ranceCenter;
+        this.range = range;
 
-	// INIT
-	public NavMesh(String id, Vector3D ranceCenter, double range, World world, Collection<NavMeshPoint> points,
-			Collection<NavMeshTriangle> triangles)
-	{
-		this.id = id;
-		this.rangeCenter = ranceCenter;
-		this.range = range;
+        this.world = world;
+        for (NavMeshPoint p : points) {
+            this.points.put(p.getId(), p);
+        }
+        for (NavMeshTriangle t : triangles) {
+            this.triangles.put(t.id, t);
+        }
 
-		this.world = world;
-		for(NavMeshPoint p : points)
-			this.points.put(p.getId(), p);
-		for(NavMeshTriangle t : triangles)
-			this.triangles.put(t.id, t);
+        fillInNeighbors();
+        determineHeuristicTriangleCenters();
+    }
 
-		fillInNeighbors();
-		determineHeuristicTriangleCenters();
-	}
+    // GETTERS
+    // general
+    @API
+    public String getId() {
+        return this.id;
+    }
 
+    public Vector3D getRangeCenter() {
+        return this.rangeCenter;
+    }
 
-	// GETTERS
-	// general
-	@API public String getId()
-	{
-		return this.id;
-	}
+    public double getRange() {
+        return this.range;
+    }
 
-	public Vector3D getRangeCenter()
-	{
-		return this.rangeCenter;
-	}
+    protected boolean isInRange(Location location) {
+        if (location.getWorld() != this.world) {
+            return false;
+        }
 
-	public double getRange()
-	{
-		return this.range;
-	}
+        return LocationUtil.toVector3D(location).distanceToSquared(this.rangeCenter) < this.range * this.range;
+    }
 
-	protected boolean isInRange(Location location)
-	{
-		if(location.getWorld() != this.world)
-			return false;
+    public World getWorld() {
+        return this.world;
+    }
 
-		return LocationUtil.toVector3D(location).distanceToSquared(this.rangeCenter) < this.range*this.range;
-	}
+    // poin
+    public Collection<NavMeshPoint> getPoints() {
+        return this.points.values();
+    }
 
-	public World getWorld()
-	{
-		return this.world;
-	}
+    private NavMeshPoint getPoint(String id) {
+        return this.points.get(id);
+    }
 
+    // triangle
+    public Collection<NavMeshTriangle> getTriangles() {
+        return this.triangles.values();
+    }
 
-	// poin
-	public Collection<NavMeshPoint> getPoints()
-	{
-		return this.points.values();
-	}
+    @API
+    public Set<NavMeshTriangle> getTrianglesUsingPoint(NavMeshPoint point) {
+        Set<NavMeshTriangle> trianglesUsingPoint = new HashSet<>();
 
-	private NavMeshPoint getPoint(String id)
-	{
-		return this.points.get(id);
-	}
+        for (NavMeshTriangle triangle : this.triangles.values()) {
+            if (triangle.isUsingPoint(point)) {
+                trianglesUsingPoint.add(triangle);
+            }
+        }
 
+        return trianglesUsingPoint;
+    }
 
-	// triangle
-	public Collection<NavMeshTriangle> getTriangles()
-	{
-		return this.triangles.values();
-	}
+    public NavMeshTriangle getTriangle(String id) {
+        return this.triangles.get(id);
+    }
 
-	@API public Set<NavMeshTriangle> getTrianglesUsingPoint(NavMeshPoint point)
-	{
-		Set<NavMeshTriangle> trianglesUsingPoint = new HashSet<>();
+    public NavMeshTriangle getTriangleAt(Location location) {
+        // TODO optimize this, might become bottleneck with thousands of triangles
 
-		for(NavMeshTriangle triangle : this.triangles.values())
-			if(triangle.isUsingPoint(point))
-				trianglesUsingPoint.add(triangle);
+        for (NavMeshTriangle triangle : this.triangles.values()) {
+            if (triangle.doesContain(location)) {
+                return triangle;
+            }
+        }
 
-		return trianglesUsingPoint;
-	}
+        return null;
+    }
 
+    // POINT
+    @API
+    public NavMeshPoint createPoint(double x, double y, double z) {
+        NavMeshPoint point = new NavMeshPoint(getUnusedId(), x, y, z);
 
-	public NavMeshTriangle getTriangle(String id)
-	{
-		return this.triangles.get(id);
-	}
+        this.points.put(point.getId(), point);
+        return point;
+    }
 
-	public NavMeshTriangle getTriangleAt(Location location)
-	{
-		// TODO optimize this, might become bottleneck with thousands of triangles
+    @API
+    public void removePoint(NavMeshPoint point) {
+        for (NavMeshTriangle t : getTrianglesUsingPoint(point)) {
+            deleteTriangle(t);
+        }
 
-		for(NavMeshTriangle triangle : this.triangles.values())
-			if(triangle.doesContain(location))
-				return triangle;
+        this.points.remove(point.getId());
+    }
 
-		return null;
-	}
+    // TRIANGLE
+    @API
+    public NavMeshTriangle createTriangle(NavMeshPoint point1, NavMeshPoint point2, NavMeshPoint point3) {
+        NavMeshTriangle triangle = new NavMeshTriangle(getUnusedId(), point1, point2, point3);
+        this.triangles.put(triangle.id, triangle);
 
+        fillInNeighborsFor(triangle);
 
-	// POINT
-	@API public NavMeshPoint createPoint(double x, double y, double z)
-	{
-		NavMeshPoint point = new NavMeshPoint(getUnusedId(), x, y, z);
+        return triangle;
+    }
 
-		this.points.put(point.getId(), point);
-		return point;
-	}
+    @API
+    public void deleteTriangle(NavMeshTriangle triangle) {
+        this.triangles.remove(triangle.id);
+        triangle.clearNeighbors();
+    }
 
-	@API public void removePoint(NavMeshPoint point)
-	{
-		for(NavMeshTriangle t : getTrianglesUsingPoint(point))
-			deleteTriangle(t);
+    // LADDER
+    @API
+    public void createLadder(NavMeshTriangle triangle1, Vector3D position1, NavMeshTriangle triangle2,
+            Vector3D position2, Direction2D ladderDirection) {
+        NavMeshLadder ladder;
+        if (position1.y < position2.y) {
+            ladder = new NavMeshLadder(triangle1, position1, triangle2, position2, ladderDirection);
+        } else {
+            ladder = new NavMeshLadder(triangle2, position2, triangle1, position1, ladderDirection);
+        }
 
-		this.points.remove(point.getId());
-	}
+        triangle1.makeNeighbors(triangle2, ladder);
+    }
 
+    @API
+    public void removeLadder(NavMeshLadder ladder) {
+        ladder.getTriangleBottom().removeNeighbor(ladder.getTriangleTop());
+    }
 
-	// TRIANGLE
-	@API public NavMeshTriangle createTriangle(NavMeshPoint point1, NavMeshPoint point2, NavMeshPoint point3)
-	{
-		NavMeshTriangle triangle = new NavMeshTriangle(getUnusedId(), point1, point2, point3);
-		this.triangles.put(triangle.id, triangle);
+    // PATHFINDING
+    private void fillInNeighbors() {
+        for (NavMeshTriangle triangle : this.triangles.values()) {
+            fillInNeighborsFor(triangle);
+        }
+    }
 
-		fillInNeighborsFor(triangle);
+    private void fillInNeighborsFor(NavMeshTriangle triangle) {
+        for (NavMeshTriangle t : this.triangles.values()) {
+            if (Objects.equals(t, triangle)) {
+                continue;
+            }
 
-		return triangle;
-	}
+            Set<NavMeshPoint> commonPoints = getCommonPoints(triangle, t);
 
-	@API public void deleteTriangle(NavMeshTriangle triangle)
-	{
-		this.triangles.remove(triangle.id);
-		triangle.clearNeighbors();
-	}
+            if (commonPoints.size() == 2) {
+                NavMeshTrianglePortal portal = new NavMeshTrianglePortal(triangle, t, commonPoints);
+                triangle.makeNeighbors(t, portal);
+            }
+        }
+    }
 
+    private void determineHeuristicTriangleCenters() {
+        for (int i = 0; i < 20; i++) {
+            reduceHeuristicCenterDistances(0.1);
+        }
+    }
 
-	// LADDER
-	@API public void createLadder(NavMeshTriangle triangle1, Vector3D position1, NavMeshTriangle triangle2,
-			Vector3D position2, Direction2D ladderDirection)
-	{
-		NavMeshLadder ladder;
-		if(position1.y < position2.y)
-			ladder = new NavMeshLadder(triangle1, position1, triangle2, position2, ladderDirection);
-		else
-			ladder = new NavMeshLadder(triangle2, position2, triangle1, position1, ladderDirection);
+    private void reduceHeuristicCenterDistances(double factor) {
+        for (NavMeshTriangle triangle : this.triangles.values()) {
+            Set<NavMeshTriangle> neighbors = triangle.neighbors.keySet();
+            if (neighbors.size() <= 1) {
+                continue;
+            }
 
-		triangle1.makeNeighbors(triangle2, ladder);
-	}
+            Vector3D neighborSum = new Vector3D();
+            for (NavMeshTriangle n : neighbors) {
+                neighborSum = neighborSum.add(n.getHeuristicCenter());
+            }
 
-	@API public void removeLadder(NavMeshLadder ladder)
-	{
-		ladder.getTriangleBottom().removeNeighbor(ladder.getTriangleTop());
-	}
+            Vector3D neighborAverage = neighborSum.divide(neighbors.size());
+            Vector3D currentHeuristicCenter = triangle.getHeuristicCenter();
+            Vector3D fromCurrentToAverage = neighborAverage.subtract(currentHeuristicCenter);
 
+            Vector3D newHeuristicCenter = currentHeuristicCenter
+                    .moveTowards(neighborAverage, fromCurrentToAverage.length() * factor);
+            if (triangle.doesContain(newHeuristicCenter)) {
+                triangle.setHeuristicCenter(newHeuristicCenter);
+            }
+        }
+    }
 
-	// PATHFINDING
-	private void fillInNeighbors()
-	{
-		for(NavMeshTriangle triangle : this.triangles.values())
-			fillInNeighborsFor(triangle);
-	}
+    // UTIL
+    private String getUnusedId() {
+        String id;
+        do {
+            id = Base64Key.generate(KEY_LENGTH);
+        } while (getPoint(id) != null || getTriangle(id) != null);
 
-	private void fillInNeighborsFor(NavMeshTriangle triangle)
-	{
-		for(NavMeshTriangle t : this.triangles.values())
-		{
-			if(Objects.equals(t, triangle))
-				continue;
+        return id;
+    }
 
-			Set<NavMeshPoint> commonPoints = getCommonPoints(triangle, t);
+    private Set<NavMeshPoint> getCommonPoints(NavMeshTriangle triangle1, NavMeshTriangle triangle2) {
+        NavMeshPoint[] triangle1Points = new NavMeshPoint[]{triangle1.point1, triangle1.point2, triangle1.point3};
+        NavMeshPoint[] triangle2Points = new NavMeshPoint[]{triangle2.point1, triangle2.point2, triangle2.point3};
 
-			if(commonPoints.size() == 2)
-			{
-				NavMeshTrianglePortal portal = new NavMeshTrianglePortal(triangle, t, commonPoints);
-				triangle.makeNeighbors(t, portal);
-			}
-		}
-	}
+        Set<NavMeshPoint> commonPoints = new HashSet<>();
+        for (NavMeshPoint t1p : triangle1Points) {
+            for (NavMeshPoint t2p : triangle2Points) {
+                if (Objects.equals(t1p, t2p)) {
+                    commonPoints.add(t1p);
+                }
+            }
+        }
 
-
-	private void determineHeuristicTriangleCenters()
-	{
-		for(int i = 0; i < 20; i++)
-			reduceHeuristicCenterDistances(0.1);
-	}
-
-	private void reduceHeuristicCenterDistances(double factor)
-	{
-		for(NavMeshTriangle triangle : this.triangles.values())
-		{
-			Set<NavMeshTriangle> neighbors = triangle.neighbors.keySet();
-			if(neighbors.size() <= 1)
-				continue;
-
-			Vector3D neighborSum = new Vector3D();
-			for(NavMeshTriangle n : neighbors)
-				neighborSum = neighborSum.add(n.getHeuristicCenter());
-
-			Vector3D neighborAverage = neighborSum.divide(neighbors.size());
-			Vector3D currentHeuristicCenter = triangle.getHeuristicCenter();
-			Vector3D fromCurrentToAverage = neighborAverage.subtract(currentHeuristicCenter);
-
-			Vector3D newHeuristicCenter = currentHeuristicCenter
-					.moveTowards(neighborAverage, fromCurrentToAverage.length()*factor);
-			if(triangle.doesContain(newHeuristicCenter))
-				triangle.setHeuristicCenter(newHeuristicCenter);
-		}
-	}
-
-
-	// UTIL
-	private String getUnusedId()
-	{
-		String id;
-		do
-			id = Base64Key.generate(KEY_LENGTH);
-		while(getPoint(id) != null || getTriangle(id) != null);
-
-		return id;
-	}
-
-	private Set<NavMeshPoint> getCommonPoints(NavMeshTriangle triangle1, NavMeshTriangle triangle2)
-	{
-		NavMeshPoint[] triangle1Points = new NavMeshPoint[] {triangle1.point1, triangle1.point2, triangle1.point3};
-		NavMeshPoint[] triangle2Points = new NavMeshPoint[] {triangle2.point1, triangle2.point2, triangle2.point3};
-
-		Set<NavMeshPoint> commonPoints = new HashSet<>();
-		for(NavMeshPoint t1p : triangle1Points)
-			for(NavMeshPoint t2p : triangle2Points)
-				if(Objects.equals(t1p, t2p))
-					commonPoints.add(t1p);
-
-		return commonPoints;
-	}
+        return commonPoints;
+    }
 
 }

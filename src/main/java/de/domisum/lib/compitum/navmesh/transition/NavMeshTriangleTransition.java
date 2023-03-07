@@ -1,11 +1,10 @@
 package de.domisum.lib.compitum.navmesh.transition;
 
-public interface NavMeshTriangleTransition
-{
+public interface NavMeshTriangleTransition {
 
-	// GETTERS
-	int getTransitionType();
+    // GETTERS
+    int getTransitionType();
 
-	double getWeight();
+    double getWeight();
 
 }

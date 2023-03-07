@@ -9,39 +9,33 @@ import de.domisum.lib.compitum.path.PathWaypoint;
 import java.util.ArrayList;
 import java.util.List;
 
-public class BlockPathSmoother
-{
+public class BlockPathSmoother {
 
-	// INPUT
-	private BlockPath blockPath;
+    // INPUT
+    private BlockPath blockPath;
 
-	// OUTPUT
-	private Path smoothPath;
+    // OUTPUT
+    private Path smoothPath;
 
+    // INIT
+    public BlockPathSmoother(BlockPath blockPath) {
+        this.blockPath = blockPath;
+    }
 
-	// INIT
-	public BlockPathSmoother(BlockPath blockPath)
-	{
-		this.blockPath = blockPath;
-	}
+    // GETTERS
+    public Path getSmoothPath() {
+        return this.smoothPath;
+    }
 
+    // CONVERSION
+    public void convert() {
+        List<PathWaypoint> pathWaypoints = new ArrayList<>();
+        for (BlockPathNode blockPathNode : this.blockPath.getNodes()) {
+            pathWaypoints.add(new PathWaypoint(new Vector3D(blockPathNode.x + 0.5, blockPathNode.y, blockPathNode.z + 0.5),
+                    blockPathNode.getTransitionType()));
+        }
 
-	// GETTERS
-	public Path getSmoothPath()
-	{
-		return this.smoothPath;
-	}
-
-
-	// CONVERSION
-	public void convert()
-	{
-		List<PathWaypoint> pathWaypoints = new ArrayList<>();
-		for(BlockPathNode blockPathNode : this.blockPath.getNodes())
-			pathWaypoints.add(new PathWaypoint(new Vector3D(blockPathNode.x+0.5, blockPathNode.y, blockPathNode.z+0.5),
-					blockPathNode.getTransitionType()));
-
-		this.smoothPath = new Path(pathWaypoints);
-	}
+        this.smoothPath = new Path(pathWaypoints);
+    }
 
 }
